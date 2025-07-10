@@ -1,6 +1,6 @@
-import { Button } from '@/components/ui/button';
 import { useRef, useState } from 'react';
 import { Navigate, useParams } from 'react-router-dom';
+import { Button } from '@/components/ui/button';
 
 const isRecordingSupported =
   Boolean(navigator.mediaDevices) &&
@@ -17,6 +17,7 @@ export function RecordRoomAudio() {
   const [isRecording, setIsRecording] = useState(false);
 
   const recorder = useRef<MediaRecorder | null>(null);
+  const intervalRef = useRef<NodeJS.Timeout>(null);
 
   async function uploadAudio(audio: Blob) {
     const formData = new FormData();
@@ -29,8 +30,29 @@ export function RecordRoomAudio() {
     );
 
     const result = await response.json();
+  }
 
-    console.log(result);
+  function createRecorder(audio: MediaStream) {
+    recorder.current = new MediaRecorder(audio, {
+      mimeType: 'audio/webm',
+      audioBitsPerSecond: 64_000,
+    });
+
+    recorder.current.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        uploadAudio(event.data);
+      }
+    };
+
+    recorder.current.onstart = () => {
+      // console.log('Gravação iniciada');
+    };
+
+    recorder.current.onstop = () => {
+      // console.log('Gravação encerrada.');
+    };
+
+    recorder.current.start();
   }
 
   function stopRecording() {
@@ -38,6 +60,10 @@ export function RecordRoomAudio() {
 
     if (recorder.current && recorder.current.state !== 'inactive') {
       recorder.current.stop();
+    }
+
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
     }
   }
 
@@ -57,26 +83,13 @@ export function RecordRoomAudio() {
       },
     });
 
-    recorder.current = new MediaRecorder(audio, {
-      mimeType: 'audio/webm',
-      audioBitsPerSecond: 64_000,
-    });
+    createRecorder(audio);
 
-    recorder.current.ondataavailable = event => {
-      if (event.data.size > 0) {
-        uploadAudio(event.data);
-      }
-    };
+    intervalRef.current = setInterval(() => {
+      recorder.current?.stop();
 
-    recorder.current.onstart = () => {
-      console.log('Gravação iniciada');
-    };
-
-    recorder.current.onstop = () => {
-      console.log('Gravação encerrada.');
-    };
-
-    recorder.current.start();
+      createRecorder(audio);
+    }, 5000);
   }
 
   if (!params.roomId) {
@@ -84,7 +97,7 @@ export function RecordRoomAudio() {
   }
 
   return (
-    <div className="h-screen flex items-center justify-center flex-col gap-3">
+    <div className="flex h-screen flex-col items-center justify-center gap-3">
       {isRecording ? (
         <Button onClick={stopRecording}>Parar gravação</Button>
       ) : (
